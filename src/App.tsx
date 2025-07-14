@@ -18,6 +18,7 @@ type Message = {
 };
 
 export default function App() {
+  const API_URL = import.meta.env.VITE_API_URL;
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -88,7 +89,7 @@ export default function App() {
         formData.append("file", file);
 
         response = await axios.post<{ categories: Category[] }>(
-          "http://80.253.19.93:8000/upload",
+          `${API_URL}/upload`,
           formData,
           {
             headers: {
@@ -100,7 +101,7 @@ export default function App() {
       } else {
         // Отправка текста
         response = await axios.post<{ categories: Category[] }>(
-          "http://80.253.19.93:8000/analyze",
+          `${API_URL}/analyze`,
           { text },
           {
             headers: {
