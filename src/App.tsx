@@ -24,6 +24,7 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,6 +35,19 @@ export default function App() {
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  const copyToClipboard = (text: string, messageId: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedId(messageId);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
+  const formatResults = (categories: Category[] = []) => {
+    return categories
+      .map((cat) => `${cat.name}: ${cat.probability.toFixed(1)}%`)
+      .join("\n");
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -53,7 +67,6 @@ export default function App() {
     const userMessageId = `user-${Date.now()}`;
     const loadingMessageId = `loading-${Date.now()}`;
 
-    // Добавляем сообщение пользователя
     setMessages((prev) => [
       ...prev,
       {
@@ -69,7 +82,6 @@ export default function App() {
     setFile(null);
     setIsLoading(true);
 
-    // Добавляем загрузочное сообщение бота
     setMessages((prev) => [
       ...prev,
       {
@@ -84,9 +96,9 @@ export default function App() {
       let response;
 
       if (file) {
-        // Отправка файла
         const formData = new FormData();
         formData.append("file", file);
+        setIsUploading(true);
 
         response = await axios.post<{ categories: Category[] }>(
           `${API_URL}/upload`,
@@ -99,7 +111,6 @@ export default function App() {
           },
         );
       } else {
-        // Отправка текста
         response = await axios.post<{ categories: Category[] }>(
           `${API_URL}/analyze`,
           { text },
@@ -140,7 +151,6 @@ export default function App() {
         errorMessage = error.message;
       }
 
-      // Обновляем загрузочное сообщение на сообщение об ошибке
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === loadingMessageId
@@ -185,7 +195,7 @@ export default function App() {
           </div>
         </header>
 
-        <main className="flex flex-1 flex-col overflow-hidden">
+        <main className="flex flex-1 flex-col overflow-hidden overflow-x-hidden">
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             <AnimatePresence>
               {messages.length === 0 ? (
@@ -236,13 +246,11 @@ export default function App() {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3 }}
-                    className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}
+                    className={`group relative flex ${message.isUser ? "justify-end" : "justify-start"}`}
                   >
+                    {/* Кнопка копирования */}
                     {message.isUser ? (
-                      <m.div
-                        whileHover={{ scale: 1.01 }}
-                        className="max-w-3xl rounded-2xl rounded-tr-none bg-indigo-600 p-4 text-white shadow-md"
-                      >
+                      <div className="max-w-3xl rounded-2xl rounded-tr-none bg-indigo-600 p-4 text-white shadow-md">
                         {message.fileName ? (
                           <div className="flex items-center">
                             <svg
@@ -263,7 +271,7 @@ export default function App() {
                         ) : (
                           message.text
                         )}
-                      </m.div>
+                      </div>
                     ) : message.isLoading ? (
                       <m.div className="flex max-w-3xl items-center space-x-2 rounded-2xl rounded-tl-none bg-white p-4 shadow-md">
                         <m.div
@@ -284,39 +292,91 @@ export default function App() {
                         Ошибка: {message.error}
                       </div>
                     ) : (
-                      <m.div
-                        whileHover={{ scale: 1.01 }}
-                        className="w-md rounded-2xl rounded-tl-none bg-white p-6 shadow-md md:w-xl"
-                      >
-                        <h3 className="mb-3 text-lg font-bold text-indigo-600">
-                          Найденные ценности:
-                        </h3>
-                        <div className="space-y-3">
-                          {message.categories?.map((cat, i) => (
-                            <div
-                              key={i}
-                              className="flex flex-col sm:flex-row sm:items-center"
-                            >
-                              <div className="w-full font-medium sm:w-64">
-                                {cat.name}
-                              </div>
-                              <div className="mt-1 flex flex-1 items-center sm:mt-0">
-                                <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-200">
-                                  <m.div
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${cat.probability}%` }}
-                                    transition={{ duration: 1, delay: i * 0.1 }}
-                                    className="h-full bg-indigo-500"
-                                  />
+                      <div className="w-full">
+                        <div className="w-md rounded-2xl rounded-tl-none bg-white p-6 shadow-md md:w-xl">
+                          <h3 className="mb-3 text-lg font-bold text-indigo-600">
+                            Найденные ценности:
+                          </h3>
+                          <div className="space-y-3">
+                            {message.categories?.map((cat, i) => (
+                              <div
+                                key={i}
+                                className="flex flex-col sm:flex-row sm:items-center"
+                              >
+                                <div className="w-full font-medium sm:w-64">
+                                  {cat.name}
                                 </div>
-                                <div className="ml-2 w-12 text-right text-sm font-medium">
-                                  {cat.probability.toFixed(1)}%
+                                <div className="mt-1 flex flex-1 items-center sm:mt-0">
+                                  <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-200">
+                                    <m.div
+                                      initial={{ width: 0 }}
+                                      animate={{ width: `${cat.probability}%` }}
+                                      transition={{
+                                        duration: 1,
+                                        delay: i * 0.1,
+                                      }}
+                                      className="h-full bg-indigo-500"
+                                    />
+                                  </div>
+                                  <div className="ml-2 w-12 text-right text-sm font-medium">
+                                    {cat.probability.toFixed(1)}%
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          ))}
+                            ))}
+                          </div>
                         </div>
-                      </m.div>
+
+                        {/* Кнопка копирования под сообщением бота */}
+                        <div className="mt-2 flex justify-start">
+                          <m.button
+                            onClick={() =>
+                              copyToClipboard(
+                                formatResults(message.categories || []),
+                                message.id,
+                              )
+                            }
+                            className="rounded-lg bg-indigo-100 p-2 text-indigo-700 hover:bg-indigo-200 focus:outline-none"
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            title="Копировать результат"
+                          >
+                            {copiedId === message.id ? (
+                              <>
+                                <svg
+                                  className="h-5 w-5 text-green-500"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
+                                </svg>
+                              </>
+                            ) : (
+                              <>
+                                <svg
+                                  className="h-5 w-5"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"
+                                  />
+                                </svg>
+                              </>
+                            )}
+                          </m.button>
+                        </div>
+                      </div>
                     )}
                   </m.div>
                 ))
@@ -325,7 +385,6 @@ export default function App() {
             </AnimatePresence>
           </div>
 
-          {/* Input Area */}
           <div className="border-t border-gray-200 bg-white p-4">
             <div className="mx-auto max-w-4xl">
               <div className="relative">
