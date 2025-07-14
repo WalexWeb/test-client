@@ -1,8 +1,7 @@
-import { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState, useRef, useEffect, type ChangeEvent } from "react";
+import { m, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
-// Типы
 interface Category {
   name: string;
   probability: number;
@@ -15,14 +14,18 @@ type Message = {
   isLoading?: boolean;
   categories?: Category[];
   error?: string;
+  fileName?: string;
 };
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     scrollToBottom();
@@ -32,11 +35,20 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSendMessage = async () => {
-    const text = inputValue;
-    if (!text || isLoading) return;
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+    }
+  };
 
-    // Генерируем уникальный ID для сообщения пользователя
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleSendMessage = async () => {
+    const text = inputValue.trim();
+    if ((!text && !file) || isLoading) return;
+
     const userMessageId = `user-${Date.now()}`;
     const loadingMessageId = `loading-${Date.now()}`;
 
@@ -45,13 +57,15 @@ export default function App() {
       ...prev,
       {
         id: userMessageId,
-        text,
+        text: file ? `Файл: ${file.name}` : text,
         isUser: true,
         isLoading: false,
+        fileName: file?.name,
       },
     ]);
 
     setInputValue("");
+    setFile(null);
     setIsLoading(true);
 
     // Добавляем загрузочное сообщение бота
@@ -66,18 +80,37 @@ export default function App() {
     ]);
 
     try {
-      const response = await axios.post<{ categories: Category[] }>(
-        "http://80.253.19.93:8000/analyze",
-        { text: text },
-        {
-          headers: {
-            "Content-Type": "application/json",
-          },
-          timeout: 10000, // Таймаут 10 секунд
-        },
-      );
+      let response;
 
-      // Обновляем загрузочное сообщение на результат
+      if (file) {
+        // Отправка файла
+        const formData = new FormData();
+        formData.append("file", file);
+
+        response = await axios.post<{ categories: Category[] }>(
+          "http://80.253.19.93:8000/upload",
+          formData,
+          {
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
+            timeout: 30000,
+          },
+        );
+      } else {
+        // Отправка текста
+        response = await axios.post<{ categories: Category[] }>(
+          "http://80.253.19.93:8000/analyze",
+          { text },
+          {
+            headers: {
+              "Content-Type": "application/json",
+            },
+            timeout: 10000,
+          },
+        );
+      }
+
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === loadingMessageId
@@ -94,15 +127,12 @@ export default function App() {
 
       if (axios.isAxiosError(error)) {
         if (error.response) {
-          // Сервер вернул статус не 2xx
           errorMessage = `Ошибка ${error.response.status}: ${
             error.response.data.message || error.message
           }`;
         } else if (error.request) {
-          // Нет ответа от сервера (CORS, сервер не доступен и т.п.)
           errorMessage = "Нет ответа от сервера. Проверьте подключение.";
         } else {
-          // Ошибка при настройке запроса
           errorMessage = `Ошибка запроса: ${error.message}`;
         }
       } else if (error instanceof Error) {
@@ -123,6 +153,7 @@ export default function App() {
       );
     } finally {
       setIsLoading(false);
+      setIsUploading(false);
     }
   };
 
@@ -137,30 +168,32 @@ export default function App() {
     <div className="flex min-h-screen w-screen bg-gray-50">
       {/* Левая рамка */}
       <div className="w-16 bg-indigo-50 md:w-32 lg:w-48"></div>
+
       {/* Основное содержимое */}
       <div className="flex flex-1 flex-col">
-        <header className="sticky top-0 z-100 flex w-screen bg-white shadow-sm">
+        <header className="sticky top-0 z-100 flex bg-white shadow-sm">
           <div className="mx-auto flex max-w-4xl justify-center px-6 py-6">
-            <motion.h1
+            <m.h1
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.9 }}
               className="text-xl font-bold text-indigo-600 md:text-3xl"
             >
               Анализатор ценностей
-            </motion.h1>
+            </m.h1>
           </div>
         </header>
+
         <main className="flex flex-1 flex-col overflow-hidden">
           <div className="flex-1 space-y-4 overflow-y-auto p-4">
             <AnimatePresence>
               {messages.length === 0 ? (
-                <motion.div
+                <m.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="flex h-full flex-col items-center justify-center p-8 text-center"
                 >
-                  <motion.div
+                  <m.div
                     animate={{
                       scale: [1, 1.1, 1],
                       rotate: [0, 5, -5, 0],
@@ -185,19 +218,19 @@ export default function App() {
                         d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2z"
                       />
                     </svg>
-                  </motion.div>
+                  </m.div>
                   <h2 className="mb-2 text-2xl font-bold text-gray-700">
                     Добро пожаловать в Анализатор ценностей
                   </h2>
                   <p className="max-w-md text-gray-500">
                     Этот инструмент поможет вам понять, какие ценности
-                    преобладают в ваших сообщениях. Просто введите текст и
-                    отправьте его для анализа.
+                    преобладают в ваших сообщениях. Вы можете ввести текст или
+                    загрузить файл для анализа.
                   </p>
-                </motion.div>
+                </m.div>
               ) : (
                 messages.map((message) => (
-                  <motion.div
+                  <m.div
                     key={message.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -205,15 +238,34 @@ export default function App() {
                     className={`flex ${message.isUser ? "justify-end" : "justify-start"}`}
                   >
                     {message.isUser ? (
-                      <motion.div
+                      <m.div
                         whileHover={{ scale: 1.01 }}
                         className="max-w-3xl rounded-2xl rounded-tr-none bg-indigo-600 p-4 text-white shadow-md"
                       >
-                        {message.text}
-                      </motion.div>
+                        {message.fileName ? (
+                          <div className="flex items-center">
+                            <svg
+                              className="mr-2 h-5 w-5"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                              />
+                            </svg>
+                            {message.fileName}
+                          </div>
+                        ) : (
+                          message.text
+                        )}
+                      </m.div>
                     ) : message.isLoading ? (
-                      <motion.div className="flex max-w-3xl items-center space-x-2 rounded-2xl rounded-tl-none bg-white p-4 shadow-md">
-                        <motion.div
+                      <m.div className="flex max-w-3xl items-center space-x-2 rounded-2xl rounded-tl-none bg-white p-4 shadow-md">
+                        <m.div
                           animate={{ rotate: 360 }}
                           transition={{
                             repeat: Infinity,
@@ -222,14 +274,16 @@ export default function App() {
                           }}
                           className="h-5 w-5 rounded-full border-2 border-indigo-600 border-t-transparent"
                         />
-                        <span>Анализируем...</span>
-                      </motion.div>
+                        <span>
+                          {isUploading ? "Загружаем файл..." : "Анализируем..."}
+                        </span>
+                      </m.div>
                     ) : message.error ? (
                       <div className="max-w-3xl rounded-2xl rounded-tl-none bg-white p-4 text-red-500 shadow-md">
                         Ошибка: {message.error}
                       </div>
                     ) : (
-                      <motion.div
+                      <m.div
                         whileHover={{ scale: 1.01 }}
                         className="w-md rounded-2xl rounded-tl-none bg-white p-6 shadow-md md:w-xl"
                       >
@@ -247,7 +301,7 @@ export default function App() {
                               </div>
                               <div className="mt-1 flex flex-1 items-center sm:mt-0">
                                 <div className="h-3 flex-1 overflow-hidden rounded-full bg-gray-200">
-                                  <motion.div
+                                  <m.div
                                     initial={{ width: 0 }}
                                     animate={{ width: `${cat.probability}%` }}
                                     transition={{ duration: 1, delay: i * 0.1 }}
@@ -261,9 +315,9 @@ export default function App() {
                             </div>
                           ))}
                         </div>
-                      </motion.div>
+                      </m.div>
                     )}
-                  </motion.div>
+                  </m.div>
                 ))
               )}
               <div ref={messagesEndRef} />
@@ -274,27 +328,50 @@ export default function App() {
           <div className="border-t border-gray-200 bg-white p-4">
             <div className="mx-auto max-w-4xl">
               <div className="relative">
-                <motion.textarea
+                <m.textarea
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyDown={handleKeyDown}
                   placeholder="Введите текст для анализа..."
-                  className="w-full resize-none rounded-xl border border-gray-300 p-4 pr-16 transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
+                  className="w-full resize-none rounded-xl border border-gray-300 p-4 pr-32 transition-all focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200"
                   rows={3}
                   whileFocus={{
                     boxShadow: "0 0 0 3px rgba(99, 102, 241, 0.3)",
                   }}
                 />
-                <motion.button
+
+                {/* Кнопка загрузки файла */}
+                <m.button
+                  type="button"
+                  onClick={handleUploadClick}
+                  disabled={isLoading}
+                  className="absolute right-16 bottom-3 rounded-lg bg-gray-200 p-2 text-gray-700 transition-colors hover:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  whileHover={{ scale: isLoading ? 1 : 1.05 }}
+                  whileTap={{ scale: isLoading ? 1 : 0.95 }}
+                >
+                  Загрузить файл
+                </m.button>
+
+                {/* загрузка файла */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileChange}
+                  className="hidden"
+                  accept=".txt,.pdf,.doc,.docx"
+                />
+
+                {/* Кнопка отправки */}
+                <m.button
                   onClick={handleSendMessage}
-                  disabled={isLoading || !inputValue.trim()}
+                  disabled={isLoading || (!inputValue && !file)}
                   className="absolute right-3 bottom-3 rounded-lg bg-indigo-600 p-2 text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
                   whileHover={{ scale: isLoading ? 1 : 1.1 }}
                   whileTap={{ scale: isLoading ? 1 : 0.95 }}
                 >
                   {isLoading ? (
-                    <motion.div
+                    <m.div
                       animate={{ rotate: 360 }}
                       transition={{ repeat: Infinity, duration: 1 }}
                       className="h-5 w-5 rounded-full border-2 border-white border-t-transparent"
@@ -314,16 +391,61 @@ export default function App() {
                       />
                     </svg>
                   )}
-                </motion.button>
+                </m.button>
               </div>
+
+              {/* Отображение выбранного файла */}
+              {file && (
+                <m.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 flex items-center justify-between rounded-lg bg-indigo-50 p-2"
+                >
+                  <div className="flex items-center">
+                    <svg
+                      className="mr-2 h-5 w-5 text-indigo-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+                      />
+                    </svg>
+                    <span className="text-sm text-indigo-800">{file.name}</span>
+                  </div>
+                  <button
+                    onClick={() => setFile(null)}
+                    className="rounded-full p-1 text-indigo-600 hover:bg-indigo-100"
+                  >
+                    <svg
+                      className="h-4 w-4"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </m.div>
+              )}
+
               <p className="mt-2 text-center text-xs text-gray-500">
-                Нажмите Enter для отправки, Shift+Enter для перехода на новую
-                строку
+                Нажмите Enter для отправки, Shift+Enter для новой строки
               </p>
             </div>
           </div>
         </main>
       </div>
+
       {/* Правая рамка */}
       <div className="w-16 bg-indigo-50 md:w-32 lg:w-48"></div>
     </div>
