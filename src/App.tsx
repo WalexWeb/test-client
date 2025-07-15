@@ -37,11 +37,38 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const copyToClipboard = (text: string, messageId: string) => {
-    navigator.clipboard.writeText(text).then(() => {
+  const copyToClipboard = async (text: string, messageId: string) => {
+    try {
+      // Проверяем поддержку Clipboard API
+      if (!navigator.clipboard) {
+        throw new Error("Clipboard API not supported");
+      }
+
+      // Пытаемся записать в буфер обмена
+      await navigator.clipboard.writeText(text);
       setCopiedId(messageId);
       setTimeout(() => setCopiedId(null), 2000);
-    });
+    } catch (err) {
+      // Fallback для старых браузеров
+      const textArea = document.createElement("textarea");
+      textArea.value = text;
+      document.body.appendChild(textArea);
+      textArea.select();
+
+      try {
+        const successful = document.execCommand("copy");
+        if (successful) {
+          setCopiedId(messageId);
+          setTimeout(() => setCopiedId(null), 2000);
+        } else {
+          console.error("Failed to copy text");
+        }
+      } catch (err) {
+        console.error("Error copying text:", err);
+      } finally {
+        document.body.removeChild(textArea);
+      }
+    }
   };
 
   const formatResults = (categories: Category[] = []) => {
